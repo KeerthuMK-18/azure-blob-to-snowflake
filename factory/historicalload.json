@@ -1,0 +1,15 @@
+{
+	"name": "historicalload",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "c64ab945-1207-4089-8299-42868aa9f3ae",
+		"tenantId": "dec2c2f1-e4be-46d0-8f23-30e107324eb0"
+	}
+}
