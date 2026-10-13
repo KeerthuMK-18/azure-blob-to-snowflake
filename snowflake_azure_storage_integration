@@ -1,0 +1,141 @@
+
+-- =========================================================
+-- STEP 1: SET ROLE
+-- =========================================================
+
+USE ROLE ACCOUNTADMIN;
+
+
+-- =========================================================
+-- STEP 2: CREATE DATABASE, SCHEMA, AND WAREHOUSE
+-- WARNING: OR REPLACE DATABASE DELETES EXISTING DATABASE DATA
+-- =========================================================
+
+CREATE DATABASE IF NOT EXISTS MK_DEV_DB;
+
+CREATE SCHEMA IF NOT EXISTS MK_DEV_DB.MK_DEV_SCH;
+
+CREATE WAREHOUSE IF NOT EXISTS ADF_XS_WH
+    WAREHOUSE_SIZE = 'XSMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE;
+
+
+-- Select database, schema, and warehouse
+
+USE DATABASE MK_DEV_DB;
+USE SCHEMA MK_DEV_SCH;
+USE WAREHOUSE ADF_XS_WH;
+
+
+-- =========================================================
+-- STEP 3: CHECK AZURE STORAGE INTEGRATION
+-- =========================================================
+
+DESC INTEGRATION SNOWFLAKE_AZURE_INTEGRATION;
+
+
+-- =========================================================
+-- STEP 4: ALLOW THE AZURE CONTAINER LOCATION
+-- NOTE: This replaces the existing allowed-location list.
+-- Preserve any other locations you still require.
+-- =========================================================
+
+ALTER STORAGE INTEGRATION SNOWFLAKE_AZURE_INTEGRATION
+SET STORAGE_ALLOWED_LOCATIONS = (
+    'azure://blobtosnowflake.blob.core.windows.net/bronze/'
+);
+
+
+-- =========================================================
+-- STEP 5: CREATE TARGET TABLE
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS MK_DEV_DB.MK_DEV_SCH.SALES_DATA
+(
+    SALES_ID        VARCHAR,
+    ORDER_ID        VARCHAR,
+    PRODUCT_ID      VARCHAR,
+    PRICE_PER_UNIT  VARCHAR,
+    QUANTITY        VARCHAR,
+    TOTAL_PRICE     VARCHAR
+);
+
+
+-- =========================================================
+-- STEP 6: CREATE CSV FILE FORMAT
+-- Use SKIP_HEADER = 0 because the first row was removed.
+-- =========================================================
+
+CREATE OR REPLACE FILE FORMAT
+    MK_DEV_DB.MK_DEV_SCH.SALES_DATA_CSV_FILE
+    TYPE = CSV
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 0
+    EMPTY_FIELD_AS_NULL = TRUE
+    FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+    COMMENT = 'CSV file format for sales data from Azure Blob Storage';
+
+
+-- =========================================================
+-- STEP 7: CREATE EXTERNAL STAGE
+-- Assumes bronze is the container name.
+-- =========================================================
+
+CREATE OR REPLACE STAGE
+    MK_DEV_DB.MK_DEV_SCH.STAGE_SALES_DATA
+    URL = 'azure://blobtosnowflake.blob.core.windows.net/bronze/'
+    STORAGE_INTEGRATION = SNOWFLAKE_AZURE_INTEGRATION
+    FILE_FORMAT = MK_DEV_DB.MK_DEV_SCH.SALES_DATA_CSV_FILE;
+
+
+-- =========================================================
+-- STEP 8: LIST FILES IN AZURE BLOB STORAGE
+-- Confirm sales_data1.csv appears in the results.
+-- =========================================================
+
+LIST @MK_DEV_DB.MK_DEV_SCH.STAGE_SALES_DATA;
+
+
+-- =========================================================
+-- STEP 9: LOAD CSV DATA INTO SALES_DATA
+-- =========================================================
+
+COPY INTO MK_DEV_DB.MK_DEV_SCH.SALES_DATA
+FROM @MK_DEV_DB.MK_DEV_SCH.STAGE_SALES_DATA
+FILES = ('sales_data1.csv')
+FILE_FORMAT = (
+    FORMAT_NAME = 'MK_DEV_DB.MK_DEV_SCH.SALES_DATA_CSV_FILE'
+)
+ON_ERROR = 'ABORT_STATEMENT';
+
+
+-- =========================================================
+-- STEP 10: VERIFY LOADED DATA
+-- =========================================================
+
+SELECT * FROM MK_DEV_DB.MK_DEV_SCH.SALES_DATA;
+
+SELECT COUNT(*) AS TOTAL_ROWS_LOADED
+FROM MK_DEV_DB.MK_DEV_SCH.SALES_DATA;
+
+
+-- =========================================================
+-- STEP 11: CHECK TABLES AND CURRENT USER
+-- =========================================================
+
+SHOW TABLES IN SCHEMA MK_DEV_DB.MK_DEV_SCH;
+
+SELECT CURRENT_USER(), CURRENT_ROLE();
+
+
+
+CREATE or REPLACE STORAGE INTEGRATION snowflake_azure_integration
+TYPE = EXTERNAL_STAGE
+STORAGE_PROVIDER = 'AZURE' 
+ENABLED = TRUE 
+AZURE_TENANT_ID = 'dec2c2f1-e4be-46d0-8f23-**********'
+STORAGE_ALLOWED_LOCATIONS = ('azure://blobtosnowflake.blob.core.windows.net/bronze/sales_data1');
+
+
+DESC INTEGRATION snowflake_azure_integration;
